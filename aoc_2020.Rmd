@@ -1,0 +1,226 @@
+---
+title: "Advent of Code 2020"
+output: html_notebook
+---
+
+```{r}
+library(tidyverse)
+```
+
+#--- Day 1: Report Repair ---
+
+Find the two entries that sum to 2020; what do you get if you multiply them together?
+
+*Strategy*: basically brute force, sum every combination
+
+```{r}
+day1_input <- scan("day1_input.txt") 
+
+expand_grid(x = day1_input, y = day1_input) %>%
+  rowwise() %>% 
+  mutate(sum_xy = sum(x, y)) %>% 
+  filter(sum_xy == 2020)
+
+1683 * 337
+```
+
+#--- Part Two ---
+
+In your expense report, what is the product of the three entries that sum to 2020?
+
+*Strategy*: same thing, not great but it works.
+
+```{r}
+expand_grid(x = day1_input, y = day1_input, z = day1_input) %>%
+  rowwise() %>% 
+  mutate(sum_xyz = sum(x, y, z)) %>% 
+  filter(sum_xyz == 2020)
+
+862 * 877 * 281
+```
+
+#--- Day 2: Password Philosophy ---
+
+How many passwords are valid according to their policies?
+
+*Strategy*: Split each string into rule, letter to search for, and password. Then count `letter` in `password` and filter by rule
+
+```{r}
+day2_input <- read_csv("day2_input.txt", col_names = FALSE)
+
+day2_data <- day2_input %>% 
+  separate(col = X1, sep = " ", into = c("range", "letter", "password")) %>%
+  separate(col = range, sep = "-", into = c("min_rule", "max_rule"), convert = TRUE) %>% 
+  mutate(letter = str_replace(letter, "\\:$", ""))
+
+day2_data %>% 
+  mutate(letter_count = str_count(password, letter)) %>% 
+  filter(letter_count >= min_rule & letter_count <= max_rule)
+```
+
+#--- Part Two ---
+
+How many passwords are valid according to the new interpretation of the policies?
+
+*Strategy*: pull out the specified letters from each password, collapse into single string and search for 1 occurrence of `letter`
+
+```{r}
+day2_input %>% 
+  separate(col = X1, sep = " ", into = c("range", "letter", "password")) %>%
+  separate(col = range, sep = "-", into = c("pos1", "pos2"), convert = TRUE) %>% 
+  mutate(letter = str_replace(letter, "\\:$", "")) %>% 
+  mutate(pass1 = str_sub(password, pos1, pos1),
+         pass2 = str_sub(password, pos2, pos2)) %>% 
+  unite("search_string", pass1:pass2, sep = "") %>% 
+  filter(str_count(search_string, letter) == 1)
+```
+
+#--- Day 3: Toboggan Trajectory ---
+
+Starting at the top-left corner of your map and following a slope of right 3 and down 1, how many trees would you encounter?
+
+*Strategy*: separate map into rows and columns of a dataframe. Starting from [1,1], read the next cell (specified by adding [1,3] to position)  and add to a tree counter if `#`. Handle the case where if you go off the right side of the map (past col 31), you start over on the left.
+
+```{r}
+day3_data <- read_csv("day3_input.txt", col_names = FALSE) %>% 
+  separate(col = X1, into = paste0("col", 1:32), sep = c(1:32)) %>% 
+  select(-col32)
+```
+
+```{r}
+rowpos = 1
+colpos = 1
+treecount = 0
+
+while (rowpos <= 322) {
+  
+  rowpos = rowpos + 1
+  
+  if ((colpos + 3) > 31) {
+    colpos = 0 + ((colpos+3) - 31)
+  }else{
+    colpos = colpos + 3
+  }
+  
+  if(day3_data[rowpos, colpos] == "#") treecount = treecount + 1
+  
+}
+
+treecount
+```
+
+#--- Part Two ---
+
+What do you get if you multiply together the number of trees encountered on each of the listed slopes?
+
+*Strategy*: same as above, but make it a function that takes slope as input.
+
+```{r}
+treecalc <- function(right, down) { 
+  rowpos = 1
+  colpos = 1
+  treecount = 0
+  
+  while (rowpos <= 322) {
+    
+    rowpos = rowpos + down
+    
+    if ((colpos + right) > 31) {
+      colpos = 0 + ((colpos + right) - 31)
+    }else{
+      colpos = colpos + right
+    }
+    
+    if(day3_data[rowpos, colpos] == "#") treecount = treecount + 1
+    
+  }
+  
+  treecount
+  
+}
+```
+
+```{r}
+treecalc(3,1) * treecalc(1,1) * treecalc(5,1) * treecalc(7,1) * treecalc(1,2)
+```
+
+#--- Day 4: Passport Processing ---
+
+Count the number of valid passports - those that have all required fields. Treat cid as optional. In your batch file, how many passports are valid?
+
+*Strategy*: use `read_file` to read in text file as a single string, then split into rows on "\n\n". Add a `passport_id` to group by, then separate out fields and values. Delete `cid` rows.  
+
+```{r}
+read_csv("day4_input.txt", col_names = FALSE, skip_empty_rows = FALSE) %>% 
+  filter(is.na(X1)) %>% 
+  nrow()
+
+# should be 251 passports
+```
+
+```{r}
+day4_data <- read_file("day4_input.txt") %>% 
+  str_split('\\n{2,}') %>% 
+  unlist() %>% 
+  as_tibble_col(column_name = "passport") %>% 
+  mutate(passport_id = row_number(), .before = 1) %>% 
+  separate(col = passport, 
+           into = paste0("field", 1:8),
+           sep = "[[:space:]]",
+           remove = FALSE)
+```
+
+```{r}
+day4_data_long <- day4_data %>% 
+  pivot_longer(cols = starts_with("field"),
+               names_to = "field",
+               values_to = "value") %>% 
+  select(-field, -passport) %>% 
+  separate(value,
+           into = c("field", "value"),
+           sep = ":") %>% 
+  group_by(passport_id) %>%
+  drop_na() %>%
+  filter(field != "cid") %>% 
+  ungroup()
+
+day4_data_long %>%
+  group_by(passport_id) %>% 
+  tally() %>% 
+  filter(n == 7)
+```
+
+# --- Part Two ---
+Count the number of valid passports - those that have all required fields and valid values. Continue to treat cid as optional. In your batch file, how many passports are valid?
+
+*Strategy*: lots of `case_when`. Helpful to separately filter for each field to get a sense of what the invalid data looks like.
+
+(slight cheat: looked at this person's code and realized one of my regex's was wrong (but close): https://github.com/clanfear/advent_2020/commit/982230b9942f1197f3bcfb1e4a77228a56e329d0)
+
+```{r}
+day4_data_long %>%
+  mutate(valid = case_when(field == "byr" & between(as.numeric(value), 1920, 2002) ~ "y",
+                           field == "iyr" & between(as.numeric(value), 2010, 2020) ~ "y",
+                           field == "eyr" & between(as.numeric(value), 2020, 2030) ~ "y",
+                           field == "hgt" & str_detect(value, "cm") & between(as.numeric(str_sub(value, 1, -3)), 150, 193) ~ "y",
+                           field == "hgt" & str_detect(value, "in") & between(as.numeric(str_sub(value, 1, -3)), 59, 76) ~ "y",
+                           field == "hcl" & str_detect(value, "^#[0-9a-f]{6}$") ~ "y",
+                           field == "ecl" & value %in% c("amb", "blu", "brn", "gry", "grn", "hzl", "oth") ~ "y",
+                           field == "pid" & str_detect(value, "^[0-9]{9}$") ~ "y",
+                           TRUE ~ "n")
+         ) %>%
+  filter(valid == "y") %>% 
+  group_by(passport_id) %>% 
+  tally() %>% 
+  filter(n == 7)
+```
+
+
+
+
+
+
+
+
+
+
