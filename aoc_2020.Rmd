@@ -496,8 +496,112 @@ Now apply to entire dataset
 
 ```{r}
 day6_data %>% 
-  #mutate(n_people = 1 + str_count(responses, "\n"), .after = 1) %>% 
   mutate(letter_counts = map_dbl(responses, count_letters), .before = 2) %>% 
   pull(letter_counts) %>% 
   sum()
 ```
+
+#--- Day 7: Handy Haversacks ---
+
+How many bag colors can eventually contain at least one shiny gold bag? (The list of rules is quite long; make sure you get all of it.)
+
+*Strategy:* recursively filter for bags that can contain shiny gold bags, then bags that can contain those bags, etc.
+
+```{r}
+rules <- read_lines("day7_input.txt") %>%
+  as_tibble_col(column_name = "input") %>% 
+  separate(col = input,
+           into = c("container", "contents"),
+           sep = " contain ") %>% 
+   mutate(contents = str_remove(contents, "\\."),
+          contents = str_remove_all(contents, " bags| bag"),
+          container = str_remove(container, " bags")) 
+```
+
+```{r}
+search_containers <- rules %>% 
+  filter(str_detect(contents, "shiny gold")) %>%
+  pull(container) %>% 
+  unique()
+
+baglist <- search_containers
+bagcount <- length(baglist) 
+
+while(length(search_containers) > 0) {
+search_containers <- rules %>% 
+  filter(str_detect(contents, str_c(search_containers, collapse = "|"))) %>% 
+  pull(container) %>% 
+  unique()
+
+baglist <- c(baglist, search_containers) %>% 
+  unique()
+bagcount <- length(baglist)
+
+print(bagcount)
+}
+
+```
+
+#--- Part Two ---
+
+How many individual bags are required inside your single shiny gold bag?
+
+*Strategy:* converse of Part 1 - find how many bags the shiny gold bags contain, then how many each of those bags contains, etc.
+
+```{r}
+rules <- read_lines("day7_input.txt") %>%
+  as_tibble_col(column_name = "input") %>% 
+  separate(col = input,
+           into = c("container", "contents"),
+           sep = " contain ") %>% 
+   mutate(contents = str_remove(contents, "\\."),
+          contents = str_remove_all(contents, " bags| bag"),
+          container = str_remove(container, " bags")) 
+```
+
+First pull all the relevant rules
+
+```{r}
+
+getrow <- which(str_detect(rules$container, "shiny gold"))
+
+rowlist <- getrow
+
+search_contents <- rules %>% 
+  slice(getrow) %>% 
+  pull(contents) %>%
+  str_replace_all(., "[0-9] ", "") %>% 
+  str_split(., ", ") %>% 
+  unlist()
+  
+while(length(search_contents) > 0) {
+getrow <- which(str_detect(rules$container, str_c(search_contents, collapse = "|")))
+
+rowlist <- c(rowlist, getrow)
+
+search_contents <- rules %>% 
+  slice(getrow) %>% 
+  pull(contents) %>%
+  str_replace_all(., "[0-9] ", "") %>% 
+  str_split(., ", ") %>% 
+  unlist()
+
+}
+
+rules_short <- rules %>% 
+  slice(rowlist)
+
+```
+
+Then separate out numbers of bags
+
+```{r}
+rules_short %>% 
+  group_by(container) %>% 
+  separate_rows(contents, sep = ", ") %>% 
+  ungroup() %>% 
+  mutate(contents = str_replace(contents, "no", "0")) %>% 
+  separate(contents, into = c("n_contents", "contents"), sep = 1)
+```
+
+This is where I got stuck trying to figure out how to recursively add bags. I think I was on the right track, similar to [this](https://twitter.com/drob/status/1336003816395845632/photo/1), but have to move on to other things now.
